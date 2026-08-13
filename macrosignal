@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>The Macro Signal — Sharief Pacasirang</title>
+<meta name="description" content="DXY moves first. Gold confirms. Bitcoin follows. A trading channel built on live, verifiable trades.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c0f;
+    --panel:#12151a;
+    --panel-2:#161a20;
+    --line:#23272e;
+    --line-soft:#1a1e24;
+    --text:#ece9e2;
+    --muted:#8b93a0;
+    --muted-2:#5c6470;
+    --gold:#c9a227;
+    --teal:#2fbf9e;
+    --rose:#c9573c;
+    --radius:2px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', -apple-system, sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--gold); color:#0a0c0f; }
+  a{ color:inherit; }
+  :focus-visible{ outline:2px solid var(--gold); outline-offset:3px; }
+
+  .wrap{ max-width:1080px; margin:0 auto; padding:0 28px; }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+
+  /* ---------- ticker ---------- */
+  .ticker{
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+    overflow:hidden;
+    white-space:nowrap;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:.02em;
+    color:var(--muted);
+  }
+  .ticker-track{
+    display:inline-flex;
+    gap:36px;
+    padding:9px 0;
+    animation:ticker 34s linear infinite;
+  }
+  @keyframes ticker{ from{ transform:translateX(0);} to{ transform:translateX(-50%);} }
+  .ticker span b{ color:var(--text); font-weight:500; margin-right:6px; }
+  .up{ color:var(--teal); }
+  .down{ color:var(--rose); }
+
+  /* ---------- nav ---------- */
+  header.site{
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:20;
+    background:rgba(10,12,15,.88);
+    backdrop-filter:blur(8px);
+  }
+  nav{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 0;
+  }
+  .brand{
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-weight:700; font-size:17px; letter-spacing:-.01em;
+  }
+  .brand em{ font-style:normal; color:var(--gold); }
+  .navlinks{ display:flex; gap:28px; font-size:13px; color:var(--muted); }
+  .navlinks a{ text-decoration:none; }
+  .navlinks a:hover{ color:var(--text); }
+  .navlinks .cta{
+    border:1px solid var(--line);
+    padding:7px 14px;
+    color:var(--text);
+    border-radius:var(--radius);
+  }
+  .navlinks .cta:hover{ border-color:var(--gold); color:var(--gold); }
+  @media(max-width:640px){ .navlinks a:not(.cta){ display:none; } }
+
+  /* ---------- hero ---------- */
+  .hero{ padding:88px 0 64px; }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--teal);
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:22px;
+  }
+  .eyebrow::before{
+    content:''; width:7px; height:7px; border-radius:50%;
+    background:var(--teal); box-shadow:0 0 0 3px rgba(47,191,158,.18);
+  }
+  h1{
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-weight:800;
+    font-size:clamp(34px, 6vw, 62px);
+    line-height:1.04;
+    letter-spacing:-.02em;
+    max-width:15ch;
+  }
+  h1 .g1{ color:var(--rose); }
+  h1 .g2{ color:var(--gold); }
+  h1 .g3{ color:var(--teal); }
+  .lede{
+    color:var(--muted);
+    font-size:17px;
+    max-width:52ch;
+    margin:22px 0 34px;
+  }
+  .hero-ctas{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:56px; }
+  .btn{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    padding:13px 22px;
+    border-radius:var(--radius);
+    text-decoration:none;
+    display:inline-flex; align-items:center; gap:8px;
+    border:1px solid transparent;
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); }
+  .btn-primary{ background:var(--gold); color:#0a0c0f; font-weight:600; }
+  .btn-primary:hover{ background:#dab438; }
+  .btn-ghost{ border-color:var(--line); color:var(--text); }
+  .btn-ghost:hover{ border-color:var(--muted); }
+
+  /* ---------- signature chart ---------- */
+  .chartcard{
+    border:1px solid var(--line);
+    background:var(--panel);
+    border-radius:var(--radius);
+    padding:26px 24px 18px;
+  }
+  .chartcard-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-bottom:14px; flex-wrap:wrap; gap:8px;
+  }
+  .chartcard-head h3{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); font-weight:500;
+  }
+  .legend{ display:flex; gap:18px; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted); }
+  .legend i{ display:inline-block; width:10px; height:2px; margin-right:6px; vertical-align:middle; }
+  .chartcard svg{ width:100%; height:auto; display:block; }
+  .chart-path{ fill:none; stroke-width:2; stroke-linecap:round; }
+  .path-dxy{ stroke:var(--rose); stroke-dasharray:600; stroke-dashoffset:600; animation:draw 1.6s ease forwards .2s; }
+  .path-gold{ stroke:var(--gold); stroke-dasharray:600; stroke-dashoffset:600; animation:draw 1.6s ease forwards .55s; }
+  .path-btc{ stroke:var(--teal); stroke-dasharray:600; stroke-dashoffset:600; animation:draw 1.6s ease forwards .9s; }
+  @keyframes draw{ to{ stroke-dashoffset:0; } }
+  .dot{ animation:pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+  @media (prefers-reduced-motion: reduce){
+    .path-dxy,.path-gold,.path-btc{ animation:none; stroke-dashoffset:0; }
+    .dot{ animation:none; }
+    .ticker-track{ animation:none; }
+  }
+  .chartcard-foot{
+    display:flex; justify-content:space-between;
+    font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted-2, #5c6470);
+    margin-top:8px; padding-top:10px; border-top:1px solid var(--line-soft);
+  }
+
+  /* ---------- section shell ---------- */
+  section{ padding:72px 0; border-top:1px solid var(--line); }
+  .kicker{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--gold); margin-bottom:12px;
+  }
+  h2{
+    font-family:'Bricolage Grotesque', sans-serif;
+    font-weight:700; font-size:clamp(24px, 3.4vw, 34px);
+    letter-spacing:-.01em; max-width:20ch; margin-bottom:16px;
+  }
+  .section-lede{ color:var(--muted); max-width:60ch; font-size:15.5px; }
+
+  /* ---------- thesis ---------- */
+  .thesis-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+    background:var(--line); margin-top:40px; border:1px solid var(--line);
+  }
+  .thesis-cell{ background:var(--bg); padding:26px 22px; }
+  .thesis-num{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted); margin-bottom:14px; }
+  .thesis-cell h4{ font-family:'Bricolage Grotesque',sans-serif; font-size:19px; margin-bottom:8px; }
+  .thesis-cell p{ color:var(--muted); font-size:14px; }
+  @media(max-width:760px){ .thesis-grid{ grid-template-columns:1fr; } }
+
+  /* ---------- pillars ---------- */
+  .pillars{ display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin-top:38px; }
+  .pillar{
+    border:1px solid var(--line); background:var(--panel);
+    padding:26px; border-radius:var(--radius);
+  }
+  .pillar .tag{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--teal); margin-bottom:12px; display:block;
+  }
+  .pillar h4{ font-family:'Bricolage Grotesque', sans-serif; font-size:20px; margin-bottom:8px; }
+  .pillar p{ color:var(--muted); font-size:14px; }
+  .pillar.wide{ grid-column:1 / -1; }
+  @media(max-width:700px){ .pillars{ grid-template-columns:1fr; } }
+
+  /* ---------- credentials ---------- */
+  .cred{
+    display:grid; grid-template-columns:1.1fr .9fr; gap:40px; align-items:center; margin-top:36px;
+  }
+  .cred-stats{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line); }
+  .cred-stat{ background:var(--panel); padding:20px; }
+  .cred-stat .n{ font-family:'IBM Plex Mono', monospace; font-size:26px; color:var(--gold); }
+  .cred-stat .l{ font-size:12px; color:var(--muted); margin-top:4px; }
+  .cred-copy p{ color:var(--muted); margin-bottom:18px; font-size:15px; }
+  .cred-copy a.linkout{
+    font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--text);
+    text-decoration:none; border-bottom:1px solid var(--gold); padding-bottom:2px;
+  }
+  .cred-copy a.linkout:hover{ color:var(--gold); }
+  @media(max-width:760px){ .cred{ grid-template-columns:1fr; } }
+
+  /* ---------- notify ---------- */
+  .notify{ text-align:left; }
+  .notify-panel{
+    border:1px solid var(--line); background:var(--panel);
+    padding:38px; border-radius:var(--radius); margin-top:30px;
+    display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap;
+  }
+  .notify-panel h3{ font-family:'Bricolage Grotesque', sans-serif; font-size:22px; margin-bottom:6px; }
+  .notify-panel p{ color:var(--muted); font-size:14px; max-width:40ch; }
+  form.notify-form{ display:flex; gap:10px; flex-wrap:wrap; }
+  .notify-form input[type=email]{
+    background:var(--bg); border:1px solid var(--line); color:var(--text);
+    padding:12px 14px; font-family:'IBM Plex Mono', monospace; font-size:13px;
+    border-radius:var(--radius); min-width:230px;
+  }
+  .notify-form input[type=email]:focus{ border-color:var(--gold); }
+  .form-note{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted-2,#5c6470); margin-top:10px; }
+
+  /* ---------- footer ---------- */
+  footer{ border-top:1px solid var(--line); padding:34px 0; }
+  .foot-row{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; font-size:13px; color:var(--muted); }
+  .foot-row a{ text-decoration:none; }
+  .foot-row a:hover{ color:var(--text); }
+</style>
+</head>
+<body>
+
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>DXY <b>104.82</b><span class="down">▾0.34%</span></span>
+      <span>XAU/USD <b>2,381.40</b><span class="up">▴0.61%</span></span>
+      <span>BTC/USD <b>64,210</b><span class="up">▴2.40%</span></span>
+      <span>US10Y <b>4.28%</b><span class="down">▾0.03</span></span>
+      <span>WTI <b>78.42</b><span class="up">▴1.10%</span></span>
+      <span>DXY <b>104.82</b><span class="down">▾0.34%</span></span>
+      <span>XAU/USD <b>2,381.40</b><span class="up">▴0.61%</span></span>
+      <span>BTC/USD <b>64,210</b><span class="up">▴2.40%</span></span>
+      <span>US10Y <b>4.28%</b><span class="down">▾0.03</span></span>
+      <span>WTI <b>78.42</b><span class="up">▴1.10%</span></span>
+    </div>
+  </div>
+
+  <header class="site">
+    <div class="wrap">
+      <nav>
+        <div class="brand">the macro <em>signal</em></div>
+        <div class="navlinks">
+          <a href="#thesis">Thesis</a>
+          <a href="#pillars">What you'll get</a>
+          <a href="#credentials">Track record</a>
+          <a href="https://shariefvp.github.io/myportfolio/" class="cta">Full portfolio ↗</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="border-top:none; padding-top:70px;">
+      <div class="wrap">
+        <div class="eyebrow">Building in public — channel launching soon</div>
+        <h1>The <span class="g1">dollar</span> moves first. <span class="g2">Gold</span> confirms. <span class="g3">Bitcoin</span> follows.</h1>
+        <p class="lede">A trading channel built on intermarket macro reads and a real, screen-recorded track record — not signals, not hype. I trade what I teach, and you watch the trade happen.</p>
+        <div class="hero-ctas">
+          <a href="#notify" class="btn btn-primary">Get notified at launch →</a>
+          <a href="https://shariefvp.github.io/myportfolio/#markets" class="btn btn-ghost">View my trading credentials</a>
+        </div>
+
+        <div class="chartcard">
+          <div class="chartcard-head">
+            <h3>Intermarket lead–lag, illustrative</h3>
+            <div class="legend">
+              <span><i style="background:var(--rose)"></i>DXY</span>
+              <span><i style="background:var(--gold)"></i>Gold</span>
+              <span><i style="background:var(--teal)"></i>BTC</span>
+            </div>
+          </div>
+          <svg viewBox="0 0 760 220" role="img" aria-label="Illustrative chart showing DXY declining first, followed by Gold rising, followed by Bitcoin rising">
+            <line x1="0" y1="55" x2="760" y2="55" stroke="#1a1e24" stroke-width="1"/>
+            <line x1="0" y1="110" x2="760" y2="110" stroke="#1a1e24" stroke-width="1"/>
+            <line x1="0" y1="165" x2="760" y2="165" stroke="#1a1e24" stroke-width="1"/>
+            <path class="chart-path path-dxy" d="M10,70 C120,72 180,90 260,130 C340,168 420,178 520,182 C600,184 680,183 750,183"/>
+            <path class="chart-path path-gold" d="M10,150 C120,150 200,148 280,142 C380,134 440,110 520,88 C610,64 680,52 750,46"/>
+            <path class="chart-path path-btc" d="M10,190 C140,190 220,190 300,186 C400,180 460,150 540,110 C630,64 690,40 750,22"/>
+            <circle class="dot" cx="750" cy="183" r="4" fill="var(--rose)"/>
+            <circle class="dot" cx="750" cy="46" r="4" fill="var(--gold)"/>
+            <circle class="dot" cx="750" cy="22" r="4" fill="var(--teal)"/>
+          </svg>
+          <div class="chartcard-foot">
+            <span>t0 — dollar turns</span>
+            <span>t+n — gold confirms</span>
+            <span>t+2n — bitcoin follows</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="thesis">
+      <div class="wrap">
+        <div class="kicker">The thesis</div>
+        <h2>One market, three tickers</h2>
+        <p class="section-lede">Most trading content treats DXY, Gold, and Bitcoin as unrelated stories. The macro read here is that they're one liquidity story on staggered clocks — and reading the lead-lag correctly is the actual edge.</p>
+        <div class="thesis-grid">
+          <div class="thesis-cell">
+            <div class="thesis-num mono">01</div>
+            <h4>Dollar turns first</h4>
+            <p>DXY reacts fastest to rate expectations and liquidity shifts — it's the leading indicator, not the lagging headline.</p>
+          </div>
+          <div class="thesis-cell">
+            <div class="thesis-num mono">02</div>
+            <h4>Gold confirms</h4>
+            <p>Gold repositions as a hard-money hedge once the dollar move is established — the confirmation leg.</p>
+          </div>
+          <div class="thesis-cell">
+            <div class="thesis-num mono">03</div>
+            <h4>Bitcoin follows</h4>
+            <p>Bitcoin picks up the liquidity trade last, often the most exaggerated of the three moves.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pillars">
+      <div class="wrap">
+        <div class="kicker">What you'll get</div>
+        <h2>Two formats, one standard: show your work</h2>
+        <p class="section-lede">Every video either explains the macro read or proves it with a real trade. No unverified calls, no signal selling.</p>
+        <div class="pillars">
+          <div class="pillar">
+            <span class="tag">Weekly</span>
+            <h4>Macro Read</h4>
+            <p>DXY / Gold / BTC intermarket analysis — what's actually driving price, and what it implies next across all three.</p>
+          </div>
+          <div class="pillar">
+            <span class="tag">Weekly</span>
+            <h4>Trade Log</h4>
+            <p>Screen-recorded, real trades from a verified account — entry logic, invalidation, and the outcome, wins and losses alike.</p>
+          </div>
+          <div class="pillar wide">
+            <span class="tag">Standing rule</span>
+            <h4>If it's on screen, it's real</h4>
+            <p>Every P&L, order ticket, and chart shown is genuinely screen-recorded from a live account. That's the entire premise of this channel — if you can't verify it, it doesn't go in the video.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="credentials">
+      <div class="wrap">
+        <div class="kicker">Track record</div>
+        <h2>The receipts live on the main portfolio</h2>
+        <div class="cred">
+          <div class="cred-copy">
+            <p>Trading credentials, prop-firm status, and platform details are kept on the full IT × Markets portfolio and updated manually — never synced live, so account credentials stay off any public site.</p>
+            <a href="https://shariefvp.github.io/myportfolio/#markets" class="linkout">See the full markets profile ↗</a>
+          </div>
+          <div class="cred-stats">
+            <div class="cred-stat"><div class="n mono">FTMO</div><div class="l">Prop firm</div></div>
+            <div class="cred-stat"><div class="n mono">MT5</div><div class="l">Execution platform</div></div>
+            <div class="cred-stat"><div class="n mono">DXY</div><div class="l">Primary lead indicator</div></div>
+            <div class="cred-stat"><div class="n mono">XAU · BTC</div><div class="l">Confirmation legs</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="notify" class="notify">
+      <div class="wrap">
+        <div class="kicker">Launch list</div>
+        <h2>Be first to watch when it goes live</h2>
+        <div class="notify-panel">
+          <div>
+            <h3>No spam. One email at launch.</h3>
+            <p>You'll hear from me once — when the first Macro Read and Trade Log videos are up.</p>
+          </div>
+          <form class="notify-form" id="notifyForm">
+            <label for="email" class="sr-only" style="position:absolute; left:-9999px;">Email address</label>
+            <input id="email" type="email" name="email" placeholder="you@email.com" required>
+            <button type="submit" class="btn btn-primary" style="border:none; cursor:pointer;" id="notifyBtn">Notify me</button>
+          </form>
+          <p class="form-note" id="notifyStatus" style="margin-top:12px;"></p>
+        </div>
+        <p class="form-note">Submissions are sent to a Google Sheet — see APPS_SCRIPT_SETUP.md for the 5-minute setup.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="foot-row">
+        <span>© 2026 Sharief Pacasirang — The Macro Signal</span>
+        <a href="https://shariefvp.github.io/myportfolio/">← Back to full portfolio</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ---- Notify form → Google Sheet via Apps Script Web App ----
+    // Replace this with your deployed Web App URL (see APPS_SCRIPT_SETUP.md).
+    var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxoVhWdeQaLI6G57POV8IuNWfd967URMk_wTHYA6w4G8fy5HOcgQDrlV91ZRUmspj41Pg/exec";
+
+    var form = document.getElementById('notifyForm');
+    var status = document.getElementById('notifyStatus');
+    var btn = document.getElementById('notifyBtn');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      if (SCRIPT_URL.indexOf('PASTE_YOUR') === 0) {
+        status.textContent = 'Form not connected yet — add your Apps Script URL in the code.';
+        return;
+      }
+
+      var email = document.getElementById('email').value.trim();
+      if (!email) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      status.textContent = '';
+
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight
+        body: JSON.stringify({
+          email: email,
+          source: 'macro-signal-landing',
+          page: window.location.href,
+          submittedAt: new Date().toISOString()
+        })
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (data && data.result === 'success') {
+            form.reset();
+            status.textContent = "You're on the list — see you at launch.";
+          } else {
+            status.textContent = 'Something went wrong. Please try again.';
+          }
+        })
+        .catch(function () {
+          status.textContent = 'Something went wrong. Please try again.';
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Notify me';
+        });
+    });
+  </script>
+
+</body>
+</html>
