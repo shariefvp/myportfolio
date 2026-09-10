@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Journal — Sharief Pacasirang</title>
-<meta name="description" content="Trading journal and journey log — Sharief Pacasirang.">
 <link rel="preconnect" href="https://fonts.googleapis.com/">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Client-side OCR engine -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#0b1016; --panel:#10161d; --raised:#141b23; --line:#232d36;
@@ -104,20 +105,13 @@
 <body>
 
 <div class="topbar">
-  <a class="brand" href="../index.html"><span class="brand-dot"></span><span>Sharief Pacasirang</span></a>
-  <nav class="top-nav">
-    <a class="top-nav-item mono" href="../index.html#hero">overview</a>
-    <a class="top-nav-item mono" href="../index.html#systems">systems</a>
-    <a class="top-nav-item mono" href="../index.html#markets">markets</a>
-    <a class="top-nav-item mono active" href="./index.html">journal</a>
-    <a class="top-nav-item mono" href="../index.html#contact">contact</a>
-  </nav>
+  <a class="brand" href="#"><span class="brand-dot"></span><span>Sharief Pacasirang</span></a>
 </div>
 
 <div class="page-head">
   <span class="tag mono">trading journey</span>
   <h1>Journal</h1>
-  <p>Every setup logged before the trade, and tracked through to close. Paste an order-ticket screenshot to capture a trade in seconds.</p>
+  <p>Every setup logged before the trade. Paste an order-ticket screenshot (Ctrl+V) to automatically extract data.</p>
 </div>
 
 <div class="wrap">
@@ -128,14 +122,14 @@
       <div class="panel-head"><span id="formHeadLabel">NEW ENTRY</span> <span id="editingTag" style="display:none; color:var(--gold);">editing</span></div>
       <div class="panel-body">
         <div class="dropzone" id="dropzone">
-          <div id="dzLabel">Paste a screenshot (Ctrl+V) or <strong>click to upload</strong> — attached for reference, fields below are filled in manually</div>
+          <div id="dzLabel">Paste screenshot (Ctrl+V) or <strong>click to upload</strong> — auto-detects values</div>
           <input type="file" id="fileInput" accept="image/*">
         </div>
         <div id="thumbHolder"></div>
         <div class="status-line" id="statusLine"></div>
 
         <div class="field-grid">
-          <div class="field"><label>Symbol</label><input id="f_symbol" placeholder="XAUUSD"></div>
+          <div class="field"><label>Symbol</label><input id="f_symbol" placeholder="BTCUSD / XAUUSD"></div>
           <div class="field"><label>Order type</label>
             <select id="f_orderType">
               <option>Market</option><option>Limit</option><option>Stop</option><option selected>Stop Limit</option>
@@ -148,8 +142,8 @@
               <button type="button" id="sideSell" onclick="setSide('Sell')">SELL</button>
             </div>
           </div>
+          <div class="field"><label>Entry / Limit Price</label><input id="f_limit" placeholder="—"></div>
           <div class="field"><label>Stop price</label><input id="f_stop" placeholder="—"></div>
-          <div class="field"><label>Limit price</label><input id="f_limit" placeholder="—"></div>
           <div class="field"><label>Lots</label><input id="f_lots" placeholder="0.10"></div>
           <div class="field"><label>Risk %</label><input id="f_risk" placeholder="—"></div>
           <div class="field"><label>Take profit</label><input id="f_tp" placeholder="—"></div>
@@ -183,7 +177,7 @@
             <thead>
               <tr>
                 <th>Date</th><th>Symbol</th><th>Side</th><th>Type</th>
-                <th>Stop</th><th>Limit</th><th>TP</th><th>SL</th><th>Lots</th>
+                <th>Entry</th><th>TP</th><th>SL</th><th>Lots</th><th>Risk %</th>
                 <th>Status</th><th>Notes</th><th></th>
               </tr>
             </thead>
@@ -196,7 +190,7 @@
   </div>
 </div>
 
-<footer>© <span id="year"></span> Sharief Pacasirang — Journal is private to this browser session's account</footer>
+<footer>© <span id="year"></span> Sharief Pacasirang — Trade Journal</footer>
 
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
@@ -242,17 +236,56 @@ document.addEventListener('paste', e => {
 ['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); }));
 dropzone.addEventListener('drop', e=>{ const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
 
-function handleFile(file){
+async function handleFile(file){
   const reader = new FileReader();
-  reader.onload = () => {
-    currentImageB64 = reader.result.split(',')[1];
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    currentImageB64 = dataUrl.split(',')[1];
     document.getElementById('thumbHolder').innerHTML =
-      `<div class="thumb-wrap"><button class="thumb-clear" onclick="clearImage()">×</button><img src="${reader.result}"></div>`;
-    makeThumbnail(reader.result).then(t => { currentThumbB64 = t; });
-    setStatus('Screenshot attached — fill in the fields below.', 'ok');
+      `<div class="thumb-wrap"><button class="thumb-clear" onclick="clearImage()">×</button><img src="${dataUrl}"></div>`;
+    makeThumbnail(dataUrl).then(t => { currentThumbB64 = t; });
+    
+    setStatus('Scanning image text...', '');
+    try {
+      const result = await Tesseract.recognize(dataUrl, 'eng');
+      parseTicketData(result.data.text);
+      setStatus('Data extracted successfully!', 'ok');
+    } catch(err) {
+      console.error(err);
+      setStatus('Could not read image text. Please enter manually.', 'err');
+    }
   };
   reader.readAsDataURL(file);
 }
+
+function parseTicketData(text){
+  const clean = text.replace(/,/g, ''); // strip commas from numbers
+
+  // 1. Detect Buy / Sell
+  if (/short\s*position/i.test(clean)) setSide('Sell');
+  else if (/long\s*position/i.test(clean)) setSide('Buy');
+
+  // 2. Lot size
+  const lotMatch = clean.match(/lot\s*size[\s:]*([0-9.]+)/i);
+  if (lotMatch) document.getElementById('f_lots').value = lotMatch[1];
+
+  // 3. Risk %
+  const riskMatch = clean.match(/risk[\s:]*([0-9.]+)/i);
+  if (riskMatch) document.getElementById('f_risk').value = riskMatch[1];
+
+  // 4. Entry price
+  const entryMatch = clean.match(/entry\s*price[\s:]*([0-9.]+)/i);
+  if (entryMatch) document.getElementById('f_limit').value = entryMatch[1];
+
+  // 5. Profit / TP price
+  const tpMatch = clean.match(/profit\s*level[\s\S]*?price[\s:]*([0-9.]+)/i);
+  if (tpMatch) document.getElementById('f_tp').value = tpMatch[1];
+
+  // 6. Stop / SL price
+  const slMatch = clean.match(/stop\s*level[\s\S]*?price[\s:]*([0-9.]+)/i);
+  if (slMatch) document.getElementById('f_sl').value = slMatch[1];
+}
+
 function clearImage(){ currentImageB64 = null; currentThumbB64 = null; document.getElementById('thumbHolder').innerHTML = ''; setStatus(''); }
 function makeThumbnail(dataUrl){
   return new Promise(resolve=>{
@@ -267,18 +300,17 @@ function makeThumbnail(dataUrl){
   });
 }
 
-function setVal(id, v){ if(v !== null && v !== undefined && v !== '') document.getElementById(id).value = v; }
-
-async function loadJournal(){
+function loadJournal(){
   try{
-    const res = await window.storage.get('journal', false);
-    entries = res && res.value ? JSON.parse(res.value) : [];
+    const stored = localStorage.getItem('journal');
+    entries = stored ? JSON.parse(stored) : [];
   }catch(e){ entries = []; }
   renderTable(); renderStats();
 }
-async function persist(){
-  try{ await window.storage.set('journal', JSON.stringify(entries), false); }
-  catch(e){ setStatus('Warning: could not save journal to storage.', 'err'); }
+
+function persist(){
+  try{ localStorage.setItem('journal', JSON.stringify(entries)); }
+  catch(e){ setStatus('Warning: storage limit reached.', 'err'); }
 }
 
 function resetForm(){
@@ -296,7 +328,7 @@ function resetForm(){
   document.getElementById('editingTag').style.display = 'none';
 }
 
-async function saveEntry(){
+function saveEntry(){
   const entry = {
     id: editingId || (Date.now() + '-' + Math.random().toString(36).slice(2,7)),
     datetime: document.getElementById('f_datetime').value || new Date().toISOString(),
@@ -317,7 +349,7 @@ async function saveEntry(){
   };
   if(editingId){ entries = entries.map(e => e.id === editingId ? entry : e); }
   else{ entries.unshift(entry); }
-  await persist();
+  persist();
   renderTable(); renderStats(); resetForm();
   setStatus('Saved.', 'ok');
   setTimeout(()=>setStatus(''), 1800);
@@ -349,10 +381,10 @@ function editEntry(id){
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
-async function deleteEntry(id, evt){
+function deleteEntry(id, evt){
   evt.stopPropagation();
   entries = entries.filter(e=>e.id!==id);
-  await persist();
+  persist();
   renderTable(); renderStats();
 }
 
@@ -368,11 +400,11 @@ function renderTable(){
       <td>${e.symbol}</td>
       <td>${e.side ? `<span class="side-pill ${e.side==='Buy'?'buy':'sell'}">${e.side.toUpperCase()}</span>` : '—'}</td>
       <td>${e.orderType || '—'}</td>
-      <td>${e.stop || '—'}</td>
       <td>${e.limit || '—'}</td>
       <td>${e.tp || '—'}</td>
       <td>${e.sl || '—'}</td>
       <td>${e.lots || '—'}</td>
+      <td>${e.risk ? e.risk + '%' : '—'}</td>
       <td><span class="status-pill">${e.status || 'Planned'}</span></td>
       <td class="notes-cell" title="${(e.notes||'').replace(/"/g,'&quot;')}">${e.notes || ''}</td>
       <td><button class="del-btn" onclick="deleteEntry('${e.id}', event)">✕</button></td>
@@ -400,7 +432,7 @@ function exportXlsx(){
   const rows = entries.map(e => ({
     'Date/Time': e.datetime ? e.datetime.replace('T',' ') : '',
     'Symbol': e.symbol, 'Side': e.side || '', 'Order Type': e.orderType || '',
-    'Stop Price': e.stop || '', 'Limit Price': e.limit || '', 'Take Profit': e.tp || '', 'Stop Loss': e.sl || '',
+    'Entry/Limit Price': e.limit || '', 'Stop Price': e.stop || '', 'Take Profit': e.tp || '', 'Stop Loss': e.sl || '',
     'Lots': e.lots || '', 'Risk %': e.risk || '', 'Lot Size': e.lotSize || '', 'Tick Value': e.tickValue || '',
     'Status': e.status || '', 'Notes': e.notes || ''
   }));
