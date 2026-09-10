@@ -128,7 +128,7 @@
       <div class="panel-head"><span id="formHeadLabel">NEW ENTRY</span> <span id="editingTag" style="display:none; color:var(--gold);">editing</span></div>
       <div class="panel-body">
         <div class="dropzone" id="dropzone">
-          <div id="dzLabel">Paste a screenshot (Ctrl+V) or <strong>click to upload</strong></div>
+          <div id="dzLabel">Paste a screenshot (Ctrl+V) or <strong>click to upload</strong> — attached for reference, fields below are filled in manually</div>
           <input type="file" id="fileInput" accept="image/*">
         </div>
         <div id="thumbHolder"></div>
@@ -249,7 +249,7 @@ function handleFile(file){
     document.getElementById('thumbHolder').innerHTML =
       `<div class="thumb-wrap"><button class="thumb-clear" onclick="clearImage()">×</button><img src="${reader.result}"></div>`;
     makeThumbnail(reader.result).then(t => { currentThumbB64 = t; });
-    extractFields(currentImageB64, file.type || 'image/png');
+    setStatus('Screenshot attached — fill in the fields below.', 'ok');
   };
   reader.readAsDataURL(file);
 }
@@ -267,61 +267,6 @@ function makeThumbnail(dataUrl){
   });
 }
 
-async function extractFields(base64, mediaType){
-  setStatus('Reading order ticket...');
-  document.getElementById('saveBtn').disabled = true;
-  try{
-    const prompt = `This is a screenshot of a trading platform order ticket (e.g. TradingView). Extract the trade parameters and return ONLY raw JSON, no markdown fences, no commentary, matching exactly this shape:
-{
-  "symbol": string or null,
-  "order_type": one of "Market","Limit","Stop","Stop Limit" or null,
-  "side": "Buy" or "Sell" or null,
-  "stop_price": number or null,
-  "limit_price": number or null,
-  "lots": number or null,
-  "risk_percent": number or null,
-  "take_profit_price": number or null,
-  "stop_loss_price": number or null,
-  "lot_size": number or null,
-  "tick_value": number or null
-}
-Use null for any field not visible. Numbers only (no currency symbols, no commas) for numeric fields.`;
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:1000,
-        messages:[{ role:'user', content:[
-          { type:'image', source:{ type:'base64', media_type: mediaType, data: base64 } },
-          { type:'text', text: prompt }
-        ]}]
-      })
-    });
-    const data = await resp.json();
-    const textBlock = (data.content||[]).find(b=>b.type==='text');
-    if(!textBlock) throw new Error('No response from model');
-    const clean = textBlock.text.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(clean);
-    fillForm(parsed);
-    setStatus('Fields extracted — check before saving.', 'ok');
-  }catch(err){
-    console.error(err);
-    setStatus('Could not auto-read the ticket — fill in fields manually.', 'err');
-  }finally{
-    document.getElementById('saveBtn').disabled = false;
-  }
-}
-
-function fillForm(p){
-  if(p.symbol) document.getElementById('f_symbol').value = p.symbol;
-  if(p.order_type) document.getElementById('f_orderType').value = p.order_type;
-  if(p.side) setSide(p.side);
-  setVal('f_stop', p.stop_price); setVal('f_limit', p.limit_price); setVal('f_lots', p.lots);
-  setVal('f_risk', p.risk_percent); setVal('f_tp', p.take_profit_price); setVal('f_sl', p.stop_loss_price);
-  setVal('f_lotsize', p.lot_size); setVal('f_tickvalue', p.tick_value);
-}
 function setVal(id, v){ if(v !== null && v !== undefined && v !== '') document.getElementById(id).value = v; }
 
 async function loadJournal(){
