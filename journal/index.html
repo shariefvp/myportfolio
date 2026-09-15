@@ -535,10 +535,14 @@ function renderStats(){
 function exportXlsx(){
   if(!entries.length){ setStatus('Nothing to export yet.', 'err'); setTimeout(()=>setStatus(''),1800); return; }
   const rows = entries.map(e => ({
+    'Trade ID': e.tradeId || '',
     'Date/Time': e.datetime ? e.datetime.replace('T',' ') : '',
     'Symbol': e.symbol, 'Side': e.side || '', 'Order Type': e.orderType || '',
     'Stop Price': e.stop || '', 'Limit Price': e.limit || '', 'Take Profit': e.tp || '', 'Stop Loss': e.sl || '',
     'Lots': e.lots || '', 'Risk %': e.risk || '', 'Lot Size': e.lotSize || '', 'Tick Value': e.tickValue || '',
+    'Open Date': e.openDate || '', 'Close Date': e.closeDate || '',
+    'Entry Price': e.entryPrice || '', 'Exit Price': e.exitPrice || '',
+    'Qty': e.qty || '', 'Fee': e.fee || '', 'P&L': e.pnl || '', 'Score': e.score || '',
     'Status': e.status || '', 'Notes': e.notes || ''
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
