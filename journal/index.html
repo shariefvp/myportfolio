@@ -110,6 +110,7 @@
     <a class="top-nav-item mono" href="../index.html#systems">systems</a>
     <a class="top-nav-item mono" href="../index.html#markets">markets</a>
     <a class="top-nav-item mono active" href="./index.html">journal</a>
+    <a class="top-nav-item mono" href="../history/index.html">history</a>
     <a class="top-nav-item mono" href="../index.html#contact">contact</a>
   </nav>
 </div>
@@ -180,7 +181,18 @@
     <section class="panel">
       <div class="panel-head">
         <span>TRADE LOG <span class="count-badge" id="countBadge"></span></span>
-        <button class="btn ghost" style="flex:none; padding:6px 12px;" onclick="exportXlsx()">Export .xlsx</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn ghost" style="flex:none; padding:6px 12px;" onclick="toggleImportBox()">Import history</button>
+          <button class="btn ghost" style="flex:none; padding:6px 12px;" onclick="exportXlsx()">Export .xlsx</button>
+        </div>
+      </div>
+      <div id="importBox" style="display:none; padding:14px 16px; border-bottom:1px solid var(--line);">
+        <label style="font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim);">Paste your closed trade history table</label>
+        <textarea id="bulkImportText" placeholder="Select and copy your broker's trade history table (all rows), then paste here" style="width:100%; min-height:80px; margin-top:6px; background:var(--raised); border:1px solid var(--line); color:var(--text); border-radius:6px; padding:8px; font-family:var(--font-mono); font-size:12px;"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+          <button class="btn primary" style="flex:none; padding:8px 14px;" onclick="runBulkImport()">Import trades</button>
+          <span class="status-line" id="importStatus" style="margin:0;"></span>
+        </div>
       </div>
       <div class="panel-body" style="padding:0;">
         <div class="table-scroll">
@@ -534,6 +546,122 @@ function exportXlsx(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Journal');
   XLSX.writeFile(wb, `trade-journal-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function toggleImportBox(){
+  const box = document.getElementById('importBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+function parseTradeHistoryText(text){
+  const rawLines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const headerWords = new Set(['id','symbol','side','open date','close date','entry','exit','qty','fee','p&l','status','score']);
+  const lines = rawLines.filter(l => !headerWords.has(l.toLowerCase()));
+
+  const isIdSymbol = l => /^\d{6,}/.test(l);
+  const isSide = l => /^(buy|sell)$/i.test(l);
+  const isDate = l => /^\d{1,2}\.\d{1,2}\.\d{2,4}\s+\d{1,2}:\d{2}$/.test(l);
+  const isMoney = l => /^\$?-?[\d,]+\.\d{1,2}$/.test(l);
+  const isQty = l => /^[\d.]+$/.test(l);
+  const num = s => s.replace(/[$,]/g,'');
+
+  const rows = [];
+  let i = 0;
+  while(i < lines.length){
+    if(!isIdSymbol(lines[i])){ i++; continue; }
+    const idLine = lines[i]; i++;
+    const tokens = idLine.split(/\s+/);
+    const id = (tokens[0].match(/\d{6,}/) || [null])[0];
+    const symbol = tokens.length > 1 ? tokens[tokens.length - 1].replace(/[^A-Z0-9]/g,'') : null;
+
+    if(i >= lines.length || !isSide(lines[i])) continue;
+    const side = lines[i].charAt(0).toUpperCase() + lines[i].slice(1).toLowerCase(); i++;
+
+    if(i >= lines.length || !isDate(lines[i])) continue;
+    const openDate = lines[i]; i++;
+    if(i >= lines.length || !isDate(lines[i])) continue;
+    const closeDate = lines[i]; i++;
+
+    if(i >= lines.length || !isMoney(lines[i])) continue;
+    const entry = num(lines[i]); i++;
+    if(i >= lines.length || !isMoney(lines[i])) continue;
+    const exit = num(lines[i]); i++;
+
+    if(i >= lines.length || !isQty(lines[i])) continue;
+    const qty = lines[i]; i++;
+
+    if(i >= lines.length) continue;
+    let fee = null;
+    if(/^S0$/i.test(lines[i]) || /^SO$/i.test(lines[i])){ fee = '0'; i++; }
+    else if(/^-?\$?[\d,]*\.?\d*$/.test(lines[i])){ fee = num(lines[i]); i++; }
+
+    if(i >= lines.length || !/^[+-]\$[\d,]+\.\d{1,2}$/.test(lines[i])) continue;
+    const pnl = num(lines[i]); i++;
+
+    if(i >= lines.length) continue;
+    const statusTokens = lines[i].split(/\s+/);
+    const statusWord = statusTokens[statusTokens.length - 1].toLowerCase();
+    let status = null;
+    if(statusWord.startsWith('wi')) status = 'Win';
+    else if(statusWord.startsWith('lo')) status = 'Loss';
+    else if(statusWord.startsWith('in')) status = 'Invalid';
+    i++;
+
+    let score = null;
+    if(i < lines.length && lines[i] === '-'){ score = '-'; i++; }
+
+    rows.push({ id, symbol, side, openDate, closeDate, entry, exit, qty, fee, pnl, status, score });
+  }
+  return rows;
+}
+
+function tradeDateToIso(d){
+  const m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  let [, dd, mm, yy, hh, mi] = m;
+  if(yy.length === 2) yy = '20' + yy;
+  return `${yy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}T${hh.padStart(2,'0')}:${mi}`;
+}
+
+async function runBulkImport(){
+  const text = document.getElementById('bulkImportText').value;
+  const statusEl = document.getElementById('importStatus');
+  const parsed = parseTradeHistoryText(text);
+  if(!parsed.length){
+    statusEl.textContent = 'No trades recognized in that text.';
+    statusEl.className = 'status-line err';
+    return;
+  }
+  const existingIds = new Set(entries.filter(e => e.tradeId).map(e => e.tradeId));
+  let added = 0, skipped = 0;
+  parsed.forEach(row => {
+    if(row.id && existingIds.has(row.id)){ skipped++; return; }
+    const statusMap = { 'Win':'Closed — Win', 'Loss':'Closed — Loss', 'Invalid':'Cancelled' };
+    entries.unshift({
+      id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+      tradeId: row.id,
+      datetime: tradeDateToIso(row.closeDate) || tradeDateToIso(row.openDate) || new Date().toISOString(),
+      symbol: row.symbol || '—',
+      side: row.side || '',
+      orderType: '',
+      stop: '', limit: '', lots: row.qty || '', risk: '',
+      tp: '', sl: '',
+      lotSize: '', tickValue: '',
+      status: statusMap[row.status] || 'Planned',
+      notes: '',
+      thumb: null,
+      openDate: row.openDate, closeDate: row.closeDate,
+      entryPrice: row.entry, exitPrice: row.exit,
+      qty: row.qty, fee: row.fee, pnl: row.pnl, score: row.score
+    });
+    added++;
+    if(row.id) existingIds.add(row.id);
+  });
+  await persist();
+  renderTable(); renderStats();
+  document.getElementById('bulkImportText').value = '';
+  statusEl.textContent = `Imported ${added} trade${added===1?'':'s'}${skipped ? `, skipped ${skipped} already in journal` : ''}.`;
+  statusEl.className = 'status-line ok';
 }
 
 loadJournal();
