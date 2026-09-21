@@ -574,9 +574,10 @@ function parseTradeHistoryText(text){
   while(i < lines.length){
     if(!isIdSymbol(lines[i])){ i++; continue; }
     const idLine = lines[i]; i++;
-    const tokens = idLine.split(/\s+/);
-    const id = (tokens[0].match(/\d{6,}/) || [null])[0];
-    const symbol = tokens.length > 1 ? tokens[tokens.length - 1].replace(/[^A-Z0-9]/g,'') : null;
+    // Handles all seen variants: "12345 BTCUSD", "12345: GBPJPY", "12345BTCUSD" (no space), "12345T BTCUSD"
+    const idSymMatch = idLine.match(/^(\d{6,})\D*?([A-Z]{2,10}\d{0,3})\s*$/);
+    const id = idSymMatch ? idSymMatch[1] : (idLine.match(/\d{6,}/) || [null])[0];
+    const symbol = idSymMatch ? idSymMatch[2] : null;
 
     if(i >= lines.length || !isSide(lines[i])) continue;
     const side = lines[i].charAt(0).toUpperCase() + lines[i].slice(1).toLowerCase(); i++;
