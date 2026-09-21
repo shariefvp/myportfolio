@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com/">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#0b1016; --panel:#10161d; --raised:#141b23; --line:#232d36;
@@ -55,6 +56,19 @@
 
   textarea#pasteBox{ width:100%; min-height:140px; background:var(--raised); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px; font-family:var(--font-mono); font-size:12.5px; resize:vertical; outline:none; }
   textarea#pasteBox:focus{ border-color:var(--gold); }
+  .input-tabs{ display:flex; gap:6px; margin-bottom:12px; }
+  .input-tab{ background:var(--raised); border:1px solid var(--line); color:var(--text-dim); font-size:12px; padding:7px 14px; border-radius:6px; }
+  .input-tab.active{ background:var(--gold); border-color:var(--gold); color:#201404; font-weight:600; }
+  .dropzone{ border:1px dashed var(--line); border-radius:8px; padding:22px 14px; text-align:center; color:var(--text-dim); font-size:12.5px; cursor:pointer; }
+  .dropzone.drag{ border-color:var(--gold); color:var(--text); }
+  .dropzone strong{ color:var(--gold); font-weight:600; }
+  .dropzone input{ display:none; }
+  .thumb-wrap{ margin-top:12px; border:1px solid var(--line); border-radius:8px; overflow:hidden; position:relative; }
+  .thumb-wrap img{ display:block; width:100%; max-height:220px; object-fit:contain; background:#fff; }
+  .thumb-clear{ position:absolute; top:6px; right:6px; background:rgba(11,16,22,.85); border:1px solid var(--line); color:var(--text-dim); width:22px; height:22px; border-radius:6px; cursor:pointer; font-size:13px; line-height:1; }
+  .ocr-status{ margin-top:10px; font-size:12px; font-family:var(--font-mono); color:var(--gold); min-height:16px; }
+  .ocr-status.err{ color:var(--down); }
+  .ocr-status.ok{ color:var(--up); }
   .import-row{ display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   .btn{ padding:10px 16px; border-radius:8px; border:1px solid var(--line); background:var(--raised); color:var(--text); font-size:12.5px; font-weight:600; }
   .btn.primary{ background:var(--gold); border-color:var(--gold); color:#201404; }
@@ -117,7 +131,24 @@
   <section class="panel">
     <div class="panel-head"><span>PASTE TRADES</span></div>
     <div class="panel-body">
-      <textarea id="pasteBox" placeholder="Select your trades table on the platform, copy it (or use Snipping Tool → Copy all text), and paste the whole thing here"></textarea>
+      <div class="input-tabs">
+        <button id="tabText" class="input-tab active" onclick="setInputMode('text')">Paste text</button>
+        <button id="tabImage" class="input-tab" onclick="setInputMode('image')">Paste a screenshot instead</button>
+      </div>
+
+      <div id="textInputBlock">
+        <textarea id="pasteBox" placeholder="Select your trades table on the platform, copy it (or use Snipping Tool → Copy all text), and paste the whole thing here"></textarea>
+      </div>
+
+      <div id="imageInputBlock" style="display:none;">
+        <div class="dropzone" id="dropzone">
+          <div id="dzLabel">Paste a screenshot (Ctrl+V) or <strong>click to upload</strong> — text will be read from the image automatically</div>
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+        <div id="thumbHolder"></div>
+        <div class="ocr-status" id="ocrStatus"></div>
+      </div>
+
       <div class="import-row">
         <button class="btn primary" onclick="runImport()">Import trades</button>
         <button class="btn ghost danger" onclick="clearAll()">Clear all data</button>
@@ -434,6 +465,74 @@ function exportXlsx(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Journal');
   XLSX.writeFile(wb, `trade-journal-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function setInputMode(mode){
+  document.getElementById('tabText').classList.toggle('active', mode === 'text');
+  document.getElementById('tabImage').classList.toggle('active', mode === 'image');
+  document.getElementById('textInputBlock').style.display = mode === 'text' ? 'block' : 'none';
+  document.getElementById('imageInputBlock').style.display = mode === 'image' ? 'block' : 'none';
+}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) handleImageFile(e.target.files[0]); });
+document.addEventListener('paste', e => {
+  if(document.getElementById('imageInputBlock').style.display === 'none') return;
+  const items = e.clipboardData?.items || [];
+  for(const item of items){
+    if(item.type.startsWith('image/')){ handleImageFile(item.getAsFile()); break; }
+  }
+});
+['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e=>{ const f = e.dataTransfer.files[0]; if(f) handleImageFile(f); });
+
+function setOcrStatus(msg, kind){
+  const el = document.getElementById('ocrStatus');
+  el.textContent = msg || '';
+  el.className = 'ocr-status' + (kind ? ' ' + kind : '');
+}
+
+let ocrWorker = null;
+async function getOcrWorker(){
+  if(ocrWorker) return ocrWorker;
+  setOcrStatus('Loading OCR engine (first time only, ~10MB)…');
+  ocrWorker = await Tesseract.createWorker('eng', 1, {
+    logger: m => {
+      if(m.status === 'recognizing text'){
+        setOcrStatus(`Reading image… ${Math.round((m.progress||0)*100)}%`);
+      }
+    }
+  });
+  return ocrWorker;
+}
+
+async function handleImageFile(file){
+  const reader = new FileReader();
+  reader.onload = async () => {
+    document.getElementById('thumbHolder').innerHTML =
+      `<div class="thumb-wrap"><button class="thumb-clear" onclick="clearOcrImage()">✕</button><img src="${reader.result}"></div>`;
+    try{
+      const worker = await getOcrWorker();
+      setOcrStatus('Reading image… 0%');
+      const { data } = await worker.recognize(reader.result);
+      document.getElementById('pasteBox').value = data.text;
+      setInputMode('text');
+      setOcrStatus('');
+      setImportStatus('Text read from image — review it below, then click Import trades.', 'ok');
+    }catch(err){
+      console.error(err);
+      setOcrStatus('Could not read the image. Try the text-paste option instead.', 'err');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearOcrImage(){
+  document.getElementById('thumbHolder').innerHTML = '';
+  setOcrStatus('');
 }
 
 loadJournal();
