@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com/">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Include Tesseract.js for in-browser OCR -->
+<!-- Tesseract.js for in-browser OCR image recognition -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
@@ -55,16 +55,20 @@
   .panel-head{ padding:13px 16px; border-bottom:1px solid var(--line); font-size:11.5px; font-weight:600; color:var(--text-dim); letter-spacing:.4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
   .panel-body{ padding:16px; }
 
-  /* Dropzone & Paste Styling */
+  /* Drop zone & paste area */
   .paste-zone{
     width:100%; border:2px dashed var(--line); border-radius:8px; background:var(--raised);
-    padding:18px; text-align:center; margin-bottom:12px; transition:border-color .2s;
+    padding:20px; text-align:center; margin-bottom:12px; transition:border-color .2s, background .2s;
+    cursor:pointer;
   }
-  .paste-zone.dragover{ border-color:var(--gold); }
-  .paste-zone p{ margin:0 0 6px; font-size:13px; color:var(--text-dim); }
-  .paste-zone span{ font-size:11px; color:var(--text-dim); opacity:0.8; }
+  .paste-zone:hover, .paste-zone.dragover{
+    border-color:var(--gold);
+    background:rgba(216,173,77,.05);
+  }
+  .paste-zone p{ margin:0 0 6px; font-size:13px; color:var(--text); }
+  .paste-zone span{ font-size:11px; color:var(--text-dim); }
 
-  textarea#pasteBox{ width:100%; min-height:110px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px; font-family:var(--font-mono); font-size:12px; resize:vertical; outline:none; }
+  textarea#pasteBox{ width:100%; min-height:120px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px; font-family:var(--font-mono); font-size:12px; resize:vertical; outline:none; }
   textarea#pasteBox:focus{ border-color:var(--gold); }
   .import-row{ display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   .btn{ padding:10px 16px; border-radius:8px; border:1px solid var(--line); background:var(--raised); color:var(--text); font-size:12.5px; font-weight:600; }
@@ -119,7 +123,7 @@
 <div class="page-head">
   <span class="tag mono">trading journey</span>
   <h1>Journal</h1>
-  <p>Paste your prop firm trade table or press Ctrl+V with an image screenshot copied.</p>
+  <p>Paste a screenshot using Ctrl + V, upload an image, or paste copied raw text directly.</p>
 </div>
 
 <div class="wrap">
@@ -128,9 +132,11 @@
   <section class="panel">
     <div class="panel-head"><span>PASTE TRADES / SCREENSHOT</span></div>
     <div class="panel-body">
-      <div class="paste-zone" id="dropZone">
-        <p>📋 <strong>Press Ctrl + V anywhere</strong> to paste a screenshot directly</p>
-        <span>Or paste extracted text into the box below</span>
+      <!-- Clickable & Droppable Box -->
+      <div class="paste-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <p>📋 <strong>Click to browse file</strong> or press <strong>Ctrl + V</strong> anywhere with a screenshot copied</p>
+        <span>Supports PNG, JPG, or Snipping Tool screen captures</span>
+        <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileSelect(event)">
       </div>
 
       <textarea id="pasteBox" placeholder="Text extracted from image or copied table will appear here..."></textarea>
@@ -208,34 +214,76 @@ function setImportStatus(msg, kind){
   el.className = 'import-status' + (kind ? ' ' + kind : '');
 }
 
-// Global Clipboard Handler for Screenshot Paste
+/* ========================================================
+   OCR / IMAGE & CLIPBOARD HANDLING
+======================================================== */
+async function processImage(file) {
+  setImportStatus('Processing image... (downloading OCR model on first run)', '');
+  try {
+    const worker = await Tesseract.createWorker('eng');
+    const ret = await worker.recognize(file);
+    await worker.terminate();
+
+    const rawText = ret.data.text;
+    document.getElementById('pasteBox').value = rawText;
+
+    if (!rawText.trim()) {
+      setImportStatus('OCR completed, but no text was recognized.', 'err');
+      return;
+    }
+
+    setImportStatus('Image text recognized! Importing...', 'ok');
+    runImport();
+  } catch (err) {
+    console.error(err);
+    setImportStatus('OCR Error: ' + err.message, 'err');
+  }
+}
+
+function handleFileSelect(evt) {
+  const file = evt.target.files[0];
+  if (file) processImage(file);
+}
+
+// Drag & drop handlers
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length) {
+    processImage(e.dataTransfer.files[0]);
+  }
+});
+
+// Global Paste Listener (handles screenshots & pasted text)
 window.addEventListener('paste', async (e) => {
-  const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+  const items = (e.clipboardData || window.clipboardData).items;
   let imageFile = null;
-  for (let item of items) {
-    if (item.type.indexOf('image') !== -1) {
-      imageFile = item.getAsFile();
+
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      imageFile = items[i].getAsFile();
       break;
     }
   }
 
   if (imageFile) {
     e.preventDefault();
-    setImportStatus('Scanning image using OCR... Please wait a few seconds.', '');
-    try {
-      const worker = await Tesseract.createWorker('eng');
-      const ret = await worker.recognize(imageFile);
-      await worker.terminate();
-      
-      document.getElementById('pasteBox').value = ret.data.text;
-      setImportStatus('Image text recognized! Importing trades...', 'ok');
-      runImport();
-    } catch (err) {
-      setImportStatus('Failed to read image. Use Snipping Tool "Copy all text" instead.', 'err');
-    }
+    processImage(imageFile);
+  } else {
+    setTimeout(() => {
+      if (document.getElementById('pasteBox').value.trim()) {
+        runImport();
+      }
+    }, 150);
   }
 });
 
+/* ========================================================
+   DATA PARSING & IMPORT
+======================================================== */
 function normalizeMoney(raw){
   let s = raw.trim();
   let sign = '';
