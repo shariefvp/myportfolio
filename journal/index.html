@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com/">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Include Tesseract.js for in-browser OCR -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#0b1016; --panel:#10161d; --raised:#141b23; --line:#232d36;
@@ -53,7 +55,16 @@
   .panel-head{ padding:13px 16px; border-bottom:1px solid var(--line); font-size:11.5px; font-weight:600; color:var(--text-dim); letter-spacing:.4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
   .panel-body{ padding:16px; }
 
-  textarea#pasteBox{ width:100%; min-height:140px; background:var(--raised); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px; font-family:var(--font-mono); font-size:12.5px; resize:vertical; outline:none; }
+  /* Dropzone & Paste Styling */
+  .paste-zone{
+    width:100%; border:2px dashed var(--line); border-radius:8px; background:var(--raised);
+    padding:18px; text-align:center; margin-bottom:12px; transition:border-color .2s;
+  }
+  .paste-zone.dragover{ border-color:var(--gold); }
+  .paste-zone p{ margin:0 0 6px; font-size:13px; color:var(--text-dim); }
+  .paste-zone span{ font-size:11px; color:var(--text-dim); opacity:0.8; }
+
+  textarea#pasteBox{ width:100%; min-height:110px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px; font-family:var(--font-mono); font-size:12px; resize:vertical; outline:none; }
   textarea#pasteBox:focus{ border-color:var(--gold); }
   .import-row{ display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   .btn{ padding:10px 16px; border-radius:8px; border:1px solid var(--line); background:var(--raised); color:var(--text); font-size:12.5px; font-weight:600; }
@@ -108,16 +119,22 @@
 <div class="page-head">
   <span class="tag mono">trading journey</span>
   <h1>Journal</h1>
-  <p>Paste your prop firm trade table straight from the platform — it parses the rows and builds your log automatically.</p>
+  <p>Paste your prop firm trade table or press Ctrl+V with an image screenshot copied.</p>
 </div>
 
 <div class="wrap">
   <div class="stat-strip" id="statStrip"></div>
 
   <section class="panel">
-    <div class="panel-head"><span>PASTE TRADES</span></div>
+    <div class="panel-head"><span>PASTE TRADES / SCREENSHOT</span></div>
     <div class="panel-body">
-      <textarea id="pasteBox" placeholder="Select your trades table on the platform, copy it (or use Snipping Tool → Copy all text), and paste the whole thing here"></textarea>
+      <div class="paste-zone" id="dropZone">
+        <p>📋 <strong>Press Ctrl + V anywhere</strong> to paste a screenshot directly</p>
+        <span>Or paste extracted text into the box below</span>
+      </div>
+
+      <textarea id="pasteBox" placeholder="Text extracted from image or copied table will appear here..."></textarea>
+      
       <div class="import-row">
         <button class="btn primary" onclick="runImport()">Import trades</button>
         <button class="btn ghost danger" onclick="clearAll()">Clear all data</button>
@@ -144,13 +161,13 @@
           <thead>
             <tr>
               <th>ID</th><th>Symbol</th><th>Side</th><th>Open Date</th><th>Close Date</th>
-              <th>Entry</th><th>Exit</th><th>Qty</th><th>Fee</th><th>P&amp;L</th><th>Status</th><th>Score</th><th></th>
+              <th>Entry</th><th>Exit</th><th>Qty</th><th>Fee</th><th>P&amp;L</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody id="tradesBody"></tbody>
         </table>
       </div>
-      <div class="empty" id="emptyState" style="display:none;">No trades yet — paste your trade table above to get started.</div>
+      <div class="empty" id="emptyState" style="display:none;">No trades yet — paste your trade table or screenshot above to get started.</div>
     </div>
   </section>
 </div>
@@ -172,15 +189,16 @@ function setTab(t){
 
 function isClosed(e){ return (e.status || '').startsWith('Closed') || e.status === 'Cancelled'; }
 
-async function loadJournal(){
+function loadJournal(){
   try{
-    const res = await window.storage.get('journal', false);
-    entries = res && res.value ? JSON.parse(res.value) : [];
+    const saved = localStorage.getItem('journal');
+    entries = saved ? JSON.parse(saved) : [];
   }catch(e){ entries = []; }
   renderTable(); renderStats();
 }
-async function persist(){
-  try{ await window.storage.set('journal', JSON.stringify(entries), false); }
+
+function persist(){
+  try{ localStorage.setItem('journal', JSON.stringify(entries)); }
   catch(e){ setImportStatus('Warning: could not save to storage.', 'err'); }
 }
 
@@ -190,12 +208,40 @@ function setImportStatus(msg, kind){
   el.className = 'import-status' + (kind ? ' ' + kind : '');
 }
 
+// Global Clipboard Handler for Screenshot Paste
+window.addEventListener('paste', async (e) => {
+  const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+  let imageFile = null;
+  for (let item of items) {
+    if (item.type.indexOf('image') !== -1) {
+      imageFile = item.getAsFile();
+      break;
+    }
+  }
+
+  if (imageFile) {
+    e.preventDefault();
+    setImportStatus('Scanning image using OCR... Please wait a few seconds.', '');
+    try {
+      const worker = await Tesseract.createWorker('eng');
+      const ret = await worker.recognize(imageFile);
+      await worker.terminate();
+      
+      document.getElementById('pasteBox').value = ret.data.text;
+      setImportStatus('Image text recognized! Importing trades...', 'ok');
+      runImport();
+    } catch (err) {
+      setImportStatus('Failed to read image. Use Snipping Tool "Copy all text" instead.', 'err');
+    }
+  }
+});
+
 function normalizeMoney(raw){
   let s = raw.trim();
   let sign = '';
   if(/^[+]/.test(s)) { sign = '+'; s = s.slice(1); }
   else if(/^[-]/.test(s)) { sign = '-'; s = s.slice(1); }
-  else if(/^[·.]\s*/.test(s)) { s = s.replace(/^[·.]\s*/, ''); } // bullet-garbled '+'
+  else if(/^[·.]\s*/.test(s)) { s = s.replace(/^[·.]\s*/, ''); }
   s = s.trim().replace(/^[\$S]/i, '').replace(/,/g,'');
   const parts = s.split('.');
   if(parts.length > 2){
@@ -212,7 +258,7 @@ function parseTradeHistoryText(text){
 
   const isIdSymbol = l => /^\d{6,}/.test(l);
   const isDate = l => /^\d{1,2}\.\d{1,2}\.\d{2,4}\s+[A-Za-z]?\d{1,2}:\d{2}$/.test(l);
-  const isMoneyLike = l => /^[·.+\-]?\s?[\$S][\d.,]*\d$/i.test(l) || /^[\$S]0$/i.test(l);
+  const isMoneyLike = l => /^[·.+\-]?\s?[\$S][\d.,]*\d$/i.test(l) \vert{}\vert{} /^[\$S]0$/i.test(l);
   const isQtyBare = l => /^\d+(\.\d+)?$/.test(l);
   const isSideWord = l => /^(se|sel+|buv|3uy|buy)$/i.test(l);
   const normalizeSide = l => /^(se|sel+)$/i.test(l) ? 'Sell' : 'Buy';
@@ -225,7 +271,6 @@ function parseTradeHistoryText(text){
     return null;
   };
 
-  // find row-start indices
   const starts = [];
   lines.forEach((l,idx) => { if(isIdSymbol(l)) starts.push(idx); });
 
@@ -240,7 +285,6 @@ function parseTradeHistoryText(text){
     let symbol = idSymMatch ? idSymMatch[2] : null;
     let chunkLines = chunk;
 
-    // some layouts put the symbol on its own line right after the bare ID
     if(!symbol && chunkLines.length && /^[A-Z]{2,10}\d{0,3}$/.test(chunkLines[0]) && !isSideWord(chunkLines[0])){
       symbol = chunkLines[0];
       chunkLines = chunkLines.slice(1);
@@ -273,7 +317,6 @@ function parseTradeHistoryText(text){
     if(isClosedShape){
       exit = plainMoney[1] || null;
       if(plainMoney.length >= 3){
-        // positive P&L is often shown unsigned (no leading + or bullet), landing as a 3rd plain value
         pnl = plainMoney[2];
         fee = signedMoney[0] || null;
       }else if(signedMoney.length >= 2){
@@ -281,12 +324,10 @@ function parseTradeHistoryText(text){
         pnl = signedMoney[signedMoney.length-1];
       }else if(signedMoney.length === 1){
         const abs = Math.abs(parseFloat(signedMoney[0]));
-        // fees in this data run small (well under $20); a lone signed token that large is more likely the P&L
         if(!isNaN(abs) && abs > 20) pnl = signedMoney[0];
         else fee = signedMoney[0];
       }
     }else{
-      // open trade: any second plain-money value (often "$0") is really the fee
       fee = signedMoney[0] || (plainMoney.length >= 2 ? plainMoney[1] : null);
     }
 
@@ -300,10 +341,9 @@ function parseTradeHistoryText(text){
   }
   return rows;
 }
-module.exports = parseTradeHistoryTextV2;
-
 
 function tradeDateToIso(d){
+  if(!d) return null;
   const m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2})$/);
   if(!m) return null;
   let [, dd, mm, yy, hh, mi] = m;
@@ -311,7 +351,7 @@ function tradeDateToIso(d){
   return `${yy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}T${hh.padStart(2,'0')}:${mi}`;
 }
 
-async function runImport(){
+function runImport(){
   const text = document.getElementById('pasteBox').value;
   const parsed = parseTradeHistoryText(text);
   if(!parsed.length){
@@ -332,29 +372,29 @@ async function runImport(){
       status: statusMap[row.status] || (row.status || 'Planned'),
       openDate: row.openDate, closeDate: row.closeDate,
       entryPrice: row.entry, exitPrice: row.exit,
-      qty: row.qty, fee: row.fee, pnl: row.pnl, score: row.score
+      qty: row.qty, fee: row.fee, pnl: row.pnl
     });
     added++;
     if(row.id) existingIds.add(row.id);
   });
-  await persist();
+  persist();
   renderTable(); renderStats();
   document.getElementById('pasteBox').value = '';
   setImportStatus(`Imported ${added} trade${added===1?'':'s'}${skipped ? `, skipped ${skipped} already logged` : ''}.`, 'ok');
 }
 
-async function deleteEntry(id, evt){
+function deleteEntry(id, evt){
   evt.stopPropagation();
   entries = entries.filter(e => e.id !== id);
-  await persist();
+  persist();
   renderTable(); renderStats();
 }
 
-async function clearAll(){
+function clearAll(){
   if(!entries.length){ setImportStatus('Nothing to clear.', ''); return; }
   if(!confirm(`Delete all ${entries.length} logged trades? This can't be undone.`)) return;
   entries = [];
-  await persist();
+  persist();
   renderTable(); renderStats();
   setImportStatus('Cleared.', 'ok');
 }
@@ -396,14 +436,12 @@ function renderTable(){
         <td>${e.fee ? money(e.fee) : '—'}</td>
         <td class="pnl-cell ${pnlClass}">${e.pnl !== undefined && e.pnl !== '' ? money(e.pnl) : '—'}</td>
         <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-        <td>${e.score || '—'}</td>
         <td><button class="del-btn" onclick="deleteEntry('${e.id}', event)">✕</button></td>
       </tr>`;
   }).join('');
 }
 
 function renderStats(){
-  const totalFees = entries.reduce((s,e) => s + (parseFloat(e.fee) || 0), 0);
   const decided = entries.filter(e => e.status === 'Closed — Win' || e.status === 'Closed — Loss');
   const wins = entries.filter(e => e.status === 'Closed — Win').length;
   const winRate = decided.length ? Math.round((wins/decided.length)*100) : null;
@@ -426,7 +464,7 @@ function exportXlsx(){
     'Symbol': e.symbol || '', 'Side': e.side || '',
     'Open Date': e.openDate || '', 'Close Date': e.closeDate || '',
     'Entry Price': e.entryPrice || '', 'Exit Price': e.exitPrice || '',
-    'Qty': e.qty || '', 'Fee': e.fee || '', 'P&L': e.pnl || '', 'Score': e.score || '',
+    'Qty': e.qty || '', 'Fee': e.fee || '', 'P&L': e.pnl || '',
     'Status': e.status || ''
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
