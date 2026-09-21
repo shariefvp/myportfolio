@@ -190,67 +190,118 @@ function setImportStatus(msg, kind){
   el.className = 'import-status' + (kind ? ' ' + kind : '');
 }
 
+function normalizeMoney(raw){
+  let s = raw.trim();
+  let sign = '';
+  if(/^[+]/.test(s)) { sign = '+'; s = s.slice(1); }
+  else if(/^[-]/.test(s)) { sign = '-'; s = s.slice(1); }
+  else if(/^[·.]\s*/.test(s)) { s = s.replace(/^[·.]\s*/, ''); } // bullet-garbled '+'
+  s = s.trim().replace(/^[\$S]/i, '').replace(/,/g,'');
+  const parts = s.split('.');
+  if(parts.length > 2){
+    const decimal = parts.pop();
+    s = parts.join('') + '.' + decimal;
+  }
+  return sign + s;
+}
+
 function parseTradeHistoryText(text){
   const rawLines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
-  const headerWords = new Set(['id','symbol','side','open date','close date','entry','exit','qty','fee','p&l','status','score']);
+  const headerWords = new Set(['trades','id','open','closed','symbol','side','open date','close date','entry','exit','qty','fee','p&l','status','score']);
   const lines = rawLines.filter(l => !headerWords.has(l.toLowerCase()));
 
   const isIdSymbol = l => /^\d{6,}/.test(l);
-  const isSide = l => /^(buy|sell)$/i.test(l);
-  const isDate = l => /^\d{1,2}\.\d{1,2}\.\d{2,4}\s+\d{1,2}:\d{2}$/.test(l);
-  const isMoney = l => /^\$?-?[\d,]+\.\d{1,2}$/.test(l);
-  const isQty = l => /^[\d.]+$/.test(l);
-  const num = s => s.replace(/[$,]/g,'');
+  const isDate = l => /^\d{1,2}\.\d{1,2}\.\d{2,4}\s+[A-Za-z]?\d{1,2}:\d{2}$/.test(l);
+  const isMoneyLike = l => /^[·.+\-]?\s?[\$S][\d.,]*\d$/i.test(l) || /^[\$S]0$/i.test(l);
+  const isQtyBare = l => /^\d+(\.\d+)?$/.test(l);
+  const isSideWord = l => /^(se|sel+|buv|3uy|buy)$/i.test(l);
+  const normalizeSide = l => /^(se|sel+)$/i.test(l) ? 'Sell' : 'Buy';
+  const lastWordStatus = l => {
+    const tokens = l.split(/\s+/);
+    const w = tokens[tokens.length-1].toLowerCase();
+    if(w.startsWith('wi')) return 'Win';
+    if(w.startsWith('lo')) return 'Loss';
+    if(w.startsWith('in')) return 'Invalid';
+    return null;
+  };
+
+  // find row-start indices
+  const starts = [];
+  lines.forEach((l,idx) => { if(isIdSymbol(l)) starts.push(idx); });
 
   const rows = [];
-  let i = 0;
-  while(i < lines.length){
-    if(!isIdSymbol(lines[i])){ i++; continue; }
-    const idLine = lines[i]; i++;
+  for(let s=0; s<starts.length; s++){
+    const idLine = lines[starts[s]];
+    const chunkEnd = s+1 < starts.length ? starts[s+1] : lines.length;
+    const chunk = lines.slice(starts[s]+1, chunkEnd);
+
     const idSymMatch = idLine.match(/^(\d{6,})\D*?([A-Z]{2,10}\d{0,3})\s*$/);
     const id = idSymMatch ? idSymMatch[1] : (idLine.match(/\d{6,}/) || [null])[0];
-    const symbol = idSymMatch ? idSymMatch[2] : null;
+    let symbol = idSymMatch ? idSymMatch[2] : null;
+    let chunkLines = chunk;
 
-    if(i >= lines.length || !isSide(lines[i])) continue;
-    const side = lines[i].charAt(0).toUpperCase() + lines[i].slice(1).toLowerCase(); i++;
+    // some layouts put the symbol on its own line right after the bare ID
+    if(!symbol && chunkLines.length && /^[A-Z]{2,10}\d{0,3}$/.test(chunkLines[0]) && !isSideWord(chunkLines[0])){
+      symbol = chunkLines[0];
+      chunkLines = chunkLines.slice(1);
+    }
 
-    if(i >= lines.length || !isDate(lines[i])) continue;
-    const openDate = lines[i]; i++;
-    if(i >= lines.length || !isDate(lines[i])) continue;
-    const closeDate = lines[i]; i++;
-
-    if(i >= lines.length || !isMoney(lines[i])) continue;
-    const entry = num(lines[i]); i++;
-    if(i >= lines.length || !isMoney(lines[i])) continue;
-    const exit = num(lines[i]); i++;
-
-    if(i >= lines.length || !isQty(lines[i])) continue;
-    const qty = lines[i]; i++;
-
-    if(i >= lines.length) continue;
-    let fee = null;
-    if(/^S0$/i.test(lines[i]) || /^SO$/i.test(lines[i])){ fee = '0'; i++; }
-    else if(/^-?\$?[\d,]*\.?\d*$/.test(lines[i])){ fee = num(lines[i]); i++; }
-
-    if(i >= lines.length || !/^[+-]\$[\d,]+\.\d{1,2}$/.test(lines[i])) continue;
-    const pnl = num(lines[i]); i++;
-
-    if(i >= lines.length) continue;
-    const statusTokens = lines[i].split(/\s+/);
-    const statusWord = statusTokens[statusTokens.length - 1].toLowerCase();
+    let side = null;
+    const dates = [];
+    const plainMoney = [];
+    const signedMoney = [];
+    let qty = null;
     let status = null;
-    if(statusWord.startsWith('wi')) status = 'Win';
-    else if(statusWord.startsWith('lo')) status = 'Loss';
-    else if(statusWord.startsWith('in')) status = 'Invalid';
-    i++;
 
-    let score = null;
-    if(i < lines.length && lines[i] === '-'){ score = '-'; i++; }
+    chunkLines.forEach(l => {
+      if(side === null && isSideWord(l)){ side = normalizeSide(l); return; }
+      if(isDate(l)){ dates.push(l.replace(/\s+[A-Za-z](\d{1,2}:\d{2})$/, ' $1')); return; }
+      if(/^[\$S]0$/i.test(l)){ signedMoney.push('0'); return; }
+      if(isMoneyLike(l)){
+        if(/^[+\-]/.test(l)) signedMoney.push(normalizeMoney(l));
+        else plainMoney.push(normalizeMoney(l));
+        return;
+      }
+      if(qty === null && isQtyBare(l)){ qty = l; return; }
+      if(status === null){ const st = lastWordStatus(l); if(st){ status = st; return; } }
+    });
 
-    rows.push({ id, symbol, side, openDate, closeDate, entry, exit, qty, fee, pnl, status, score });
+    const isClosedShape = dates.length >= 2;
+    const entry = plainMoney[0] || null;
+    let exit = null, fee = null, pnl = null;
+
+    if(isClosedShape){
+      exit = plainMoney[1] || null;
+      if(plainMoney.length >= 3){
+        // positive P&L is often shown unsigned (no leading + or bullet), landing as a 3rd plain value
+        pnl = plainMoney[2];
+        fee = signedMoney[0] || null;
+      }else if(signedMoney.length >= 2){
+        fee = signedMoney[0];
+        pnl = signedMoney[signedMoney.length-1];
+      }else if(signedMoney.length === 1){
+        const abs = Math.abs(parseFloat(signedMoney[0]));
+        // fees in this data run small (well under $20); a lone signed token that large is more likely the P&L
+        if(!isNaN(abs) && abs > 20) pnl = signedMoney[0];
+        else fee = signedMoney[0];
+      }
+    }else{
+      // open trade: any second plain-money value (often "$0") is really the fee
+      fee = signedMoney[0] || (plainMoney.length >= 2 ? plainMoney[1] : null);
+    }
+
+    rows.push({
+      id, symbol, side,
+      openDate: dates[0] || null,
+      closeDate: dates[1] || null,
+      entry, exit, qty, fee, pnl,
+      status: status || (isClosedShape ? null : 'Open')
+    });
   }
   return rows;
 }
+module.exports = parseTradeHistoryTextV2;
+
 
 function tradeDateToIso(d){
   const m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+(\d{1,2}):(\d{2})$/);
